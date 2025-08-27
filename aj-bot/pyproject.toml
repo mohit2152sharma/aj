@@ -1,0 +1,13 @@
+[project]
+name = "aj_bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.1",
+    "pipecat-ai-flows>=0.0.19",
+    "pipecat-ai>=0.0.81",
+    "pydantic>=2.11.7",
+    "uvicorn>=0.35.0",
+]

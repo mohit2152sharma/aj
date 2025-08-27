@@ -1,0 +1,292 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>WebRTC Mic to Server</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+
+    h1 {
+      color: #2c3e50;
+      text-align: center;
+    }
+
+    .controls {
+      text-align: center;
+      margin: 30px 0;
+    }
+
+    #recordBtn {
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    #recordBtn:hover:not(:disabled) {
+      background: #2980b9;
+    }
+
+    #recordBtn:disabled {
+      background: #95a5a6;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin: 20px 0;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    .status.recording {
+      color: #e74c3c;
+    }
+
+    .status.connected {
+      color: #27ae60;
+    }
+
+    .status.error {
+      color: #e74c3c;
+    }
+
+    #transcription {
+      background: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 8px;
+      padding: 20px;
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+      margin: 20px 0;
+    }
+
+    #transcription p {
+      margin: 8px 0;
+      padding: 8px 12px;
+      background: white;
+      border-left: 4px solid #3498db;
+      border-radius: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    #transcription:empty::before {
+      content: "Transcriptions will appear here...";
+      color: #6c757d;
+      font-style: italic;
+    }
+
+    .clear-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      font-size: 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+
+    .clear-btn:hover {
+      background: #c0392b;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>🎤 Real-time Speech Transcription</h1>
+
+  <div class="controls">
+    <button id="recordBtn">Start Recording</button>
+    <button id="clearBtn" class="clear-btn">Clear Transcriptions</button>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div id="transcription"></div>
+
+  <script>
+    let ws;
+    let pc;
+    let isRecording = false;
+    let audioStream;
+
+    const recordBtn = document.getElementById('recordBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusDiv = document.getElementById('status');
+    const transcriptionDiv = document.getElementById('transcription');
+
+    recordBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        await startRecording();
+      } else {
+        await stopRecording();
+      }
+    });
+
+    clearBtn.addEventListener('click', () => {
+      transcriptionDiv.innerHTML = '';
+    });
+
+    function updateStatus(message, className = '') {
+      statusDiv.textContent = message;
+      statusDiv.className = `status ${className}`;
+    }
+
+    async function startRecording() {
+      try {
+        recordBtn.textContent = 'Connecting...';
+        recordBtn.disabled = true;
+        updateStatus('Connecting to server...', 'connecting');
+
+        // Connect to WebSocket
+        ws = new WebSocket("ws://localhost:8080");
+
+        ws.onopen = async () => {
+          console.log("Connected to signaling server");
+          updateStatus('Getting microphone access...', 'connecting');
+
+          pc = new RTCPeerConnection();
+
+          // 🔹 Grab mic audio
+          audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              sampleRate: 48000
+            }
+          });
+          audioStream.getTracks().forEach((track) => pc.addTrack(track, audioStream));
+          console.log("Microphone stream added");
+          updateStatus('Setting up connection...', 'connecting');
+
+          // Handle ICE
+          pc.onicecandidate = ({ candidate }) => {
+            if (candidate) {
+              ws.send(JSON.stringify({ type: "ice-candidate", candidate }));
+            }
+          };
+
+          // Send offer
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: "offer", offer }));
+        };
+
+        ws.onmessage = async (msg) => {
+          const data = JSON.parse(msg.data);
+
+          if (data.type === "answer") {
+            await pc.setRemoteDescription(data.answer);
+            updateStatus('🟢 Connected - Ready to record', 'connected');
+
+            // Now start actual recording
+            ws.send(JSON.stringify({ type: "start-recording" }));
+          } else if (data.type === "ice-candidate") {
+            try {
+              await pc.addIceCandidate(data.candidate);
+            } catch (err) {
+              console.error("Error adding ICE candidate:", err);
+            }
+          } else if (data.type === "recording-started") {
+            isRecording = true;
+            recordBtn.textContent = 'Stop Recording';
+            recordBtn.disabled = false;
+            updateStatus('🔴 Recording - Speak now!', 'recording');
+          } else if (data.type === "transcription") {
+            const timestamp = new Date().toLocaleTimeString();
+            const durationText = data.duration ? ` (${data.duration}s)` : '';
+            const filenameText = data.filename ? ` - Saved as: ${data.filename}` : '';
+
+            transcriptionDiv.innerHTML += `<p><small>${timestamp}${durationText}</small><br/>${data.text}<br/><small style="color: #666;">${filenameText}</small></p>`;
+            transcriptionDiv.scrollTop = transcriptionDiv.scrollHeight;
+            updateStatus('✅ Transcription completed - Ready for next recording', 'connected');
+
+            // Reset button state and cleanup for next recording
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.disabled = false;
+            isRecording = false;
+
+            // Close current session to prepare for next recording
+            cleanupSession();
+          } else if (data.type === "error") {
+            updateStatus(`❌ Error: ${data.message}`, 'error');
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.disabled = false;
+            isRecording = false;
+
+            // Cleanup on error to prepare for next attempt
+            cleanupSession();
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          recordBtn.textContent = 'Start Recording';
+          recordBtn.disabled = false;
+          isRecording = false;
+          updateStatus('Connection error', 'error');
+        };
+
+        ws.onclose = () => {
+          updateStatus('Connection closed', '');
+        };
+
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        recordBtn.textContent = 'Start Recording';
+        recordBtn.disabled = false;
+        updateStatus(`Error: ${error.message}`, 'error');
+      }
+    }
+
+    async function stopRecording() {
+      recordBtn.textContent = 'Processing...';
+      recordBtn.disabled = true;
+      updateStatus('🛑 Stopping recording and processing...', '');
+
+      // Send stop signal to server
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "stop-recording" }));
+      }
+
+      // Note: Don't close connections here, wait for transcription response
+      // The button state will be reset when transcription is received
+    }
+
+    function cleanupSession() {
+      // Stop audio tracks
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        audioStream = null;
+      }
+
+      // Close peer connection
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+
+      // Close WebSocket
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+
+      console.log("Session cleaned up");
+    }
+  </script>
+</body>
+
+</html>
