@@ -1,0 +1,163 @@
+---
+# GatewayClass for STUNner
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: aj-webrtc-gatewayclass
+spec:
+  controllerName: "stunner.l7mp.io/gateway-operator"
+  parametersRef:
+    group: "stunner.l7mp.io"
+    kind: GatewayConfig
+    name: aj-webrtc-gatewayconfig
+    namespace: stunner-system
+  description: "STUNner GatewayClass for aj-webrtc application"
+
+---
+# GatewayConfig for STUNner
+apiVersion: stunner.l7mp.io/v1
+kind: GatewayConfig
+metadata:
+  name: aj-webrtc-gatewayconfig
+  namespace: stunner-system
+spec:
+  realm: aj-webrtc.stunner.io
+  authType: plaintext
+  userName: "user"
+  password: "pass"
+  # Dataplane configuration
+  dataplane:
+    mode: reconcile
+    image: l7mp/stunner:latest
+
+---
+# Gateway for STUNner (STUN/TURN server)
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: aj-webrtc-gateway
+  namespace: default
+  annotations:
+    stunner.l7mp.io/type: "turn"
+spec:
+  gatewayClassName: aj-webrtc-gatewayclass
+  listeners:
+  # STUN/TURN UDP listener for WebRTC media
+  - name: aj-webrtc-udp-listener
+    port: 3478
+    protocol: TURN-UDP
+    allowedRoutes:
+      namespaces:
+        from: Same
+  # STUN/TURN TCP listener for WebRTC media (fallback)
+  - name: aj-webrtc-tcp-listener
+    port: 3478
+    protocol: TURN-TCP
+    allowedRoutes:
+      namespaces:
+        from: Same
+
+---
+# UDPRoute for routing WebRTC traffic
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: UDPRoute
+metadata:
+  name: aj-webrtc-udproute
+  namespace: default
+spec:
+  parentRefs:
+  - name: aj-webrtc-gateway
+    namespace: default
+    sectionName: aj-webrtc-udp-listener
+  rules:
+  - backendRefs:
+    - name: aj-webrtc-media-service
+      namespace: default
+      port: 5000
+
+---
+# Service for media endpoints (if needed for direct media routing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: aj-webrtc-media-service
+  namespace: default
+  labels:
+    app: aj-webrtc
+    component: media
+spec:
+  type: ClusterIP
+  selector:
+    app: aj-webrtc
+    component: server
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: UDP
+    name: media-udp
+  - port: 5001
+    targetPort: 5001
+    protocol: TCP
+    name: media-tcp
+
+---
+# NetworkPolicy for WebRTC traffic (optional - for security)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: aj-webrtc-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: aj-webrtc
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow WebSocket connections
+  - from:
+    - podSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          name: stunner-system
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Allow media traffic
+  - from:
+    - podSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          name: stunner-system
+    ports:
+    - protocol: UDP
+      port: 5000
+    - protocol: TCP
+      port: 5001
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow outbound connections to STUNner
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: stunner-system
+    ports:
+    - protocol: UDP
+      port: 3478
+    - protocol: TCP
+      port: 3478
+  # Allow outbound HTTPS (for OpenAI API, etc.)
+  - to:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
