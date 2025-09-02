@@ -1,0 +1,165 @@
+---
+# ConfigMap for environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aj-webrtc-config
+  namespace: default
+data:
+  # STUN/TURN server configuration
+  STUN_SERVER_URL: "stun:aj-webrtc-gateway.default.svc.cluster.local:3478"
+  TURN_SERVER_URL: "turn:aj-webrtc-gateway.default.svc.cluster.local:3478"
+  TURN_USERNAME: "user"
+  TURN_PASSWORD: "pass"
+  # WebRTC server configuration
+  WS_PORT: "8080"
+  ENABLE_AUDIO: "true"
+  ENABLE_VIDEO: "true"
+  
+---
+# Secret for sensitive data (OpenAI API key, etc.)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aj-webrtc-secret
+  namespace: default
+type: Opaque
+stringData:
+  OPENAI_API_KEY: "your-openai-api-key-here"  # Replace with actual API key
+
+---
+# Deployment for WebRTC server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aj-webrtc-server
+  namespace: default
+  labels:
+    app: aj-webrtc
+    component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aj-webrtc
+      component: server
+  template:
+    metadata:
+      labels:
+        app: aj-webrtc
+        component: server
+    spec:
+      containers:
+      - name: aj-webrtc-server
+        image: aj-webrtc-server:latest  # Replace with your actual image
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: websocket
+          protocol: TCP
+        env:
+        # Load configuration from ConfigMap
+        - name: WS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: WS_PORT
+        - name: STUN_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: STUN_SERVER_URL
+        - name: TURN_SERVER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: TURN_SERVER_URL
+        - name: TURN_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: TURN_USERNAME
+        - name: TURN_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: TURN_PASSWORD
+        - name: ENABLE_AUDIO
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: ENABLE_AUDIO
+        - name: ENABLE_VIDEO
+          valueFrom:
+            configMapKeyRef:
+              name: aj-webrtc-config
+              key: ENABLE_VIDEO
+        # Load secret data
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aj-webrtc-secret
+              key: OPENAI_API_KEY
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          tcpSocket:
+            port: websocket
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          tcpSocket:
+            port: websocket
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Service for WebRTC server
+apiVersion: v1
+kind: Service
+metadata:
+  name: aj-webrtc-service
+  namespace: default
+  labels:
+    app: aj-webrtc
+    component: server
+spec:
+  type: ClusterIP
+  selector:
+    app: aj-webrtc
+    component: server
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: websocket
+
+---
+# Ingress for WebRTC server (optional - for external access)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aj-webrtc-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "aj-webrtc-service"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: aj-webrtc.example.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: aj-webrtc-service
+            port:
+              number: 8080
