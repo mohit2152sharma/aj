@@ -1,0 +1,18 @@
+FROM python:3.12-alpine
+
+# Install system dependencies and C libraries needed for psycopg and other Python packages
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    postgresql-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    cargo \
+    rust \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Install uv from source
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
