@@ -48,9 +48,9 @@ gcloud iam service-accounts keys create github-actions-key.json \
 
 ```bash
 # Create repository for Docker images
-gcloud artifacts repositories create observability \
+gcloud artifacts repositories create dev-opentelemetry \
     --repository-format=docker \
-    --location=us-central1 \
+    --location=asia-south1 \
     --description="Docker repository for observability service"
 ```
 
@@ -59,7 +59,7 @@ gcloud artifacts repositories create observability \
 ```bash
 # Create GKE cluster (if you don't have one)
 gcloud container clusters create observability-cluster \
-    --zone=us-central1-a \
+    --zone=asia-south1-a \
     --num-nodes=3 \
     --enable-autoscaling \
     --min-nodes=1 \
@@ -83,7 +83,7 @@ gcloud services enable cloudbuild.googleapis.com
    - `GCP_PROJECT_ID`: Your Google Cloud project ID
    - `GCP_SA_KEY`: Contents of the `github-actions-key.json` file
    - `GKE_CLUSTER_NAME`: Your GKE cluster name (e.g., `observability-cluster`)
-   - `GKE_ZONE`: Your GKE cluster zone (e.g., `us-central1-a`)
+   - `GKE_ZONE`: Your GKE cluster zone (e.g., `asia-south1-a`)
 
 ### Manual Build and Push
 
@@ -91,13 +91,13 @@ If you need to build and push manually:
 
 ```bash
 # Configure Docker for Artifact Registry
-gcloud auth configure-docker us-central1-docker.pkg.dev
+gcloud auth configure-docker asia-south1-docker.pkg.dev
 
 # Build and tag
-docker build -t us-central1-docker.pkg.dev/$PROJECT_ID/observability/observability:latest ./observability/
+docker build -t asia-south1-docker.pkg.dev/$PROJECT_ID/dev-opentelemetry/observability:latest ./observability/
 
 # Push
-docker push us-central1-docker.pkg.dev/$PROJECT_ID/observability/observability:latest
+docker push asia-south1-docker.pkg.dev/$PROJECT_ID/dev-opentelemetry/observability:latest
 ```
 
 ### Deployment Triggers
@@ -112,7 +112,7 @@ If you need to deploy manually using kubectl:
 
 ```bash
 # Get cluster credentials
-gcloud container clusters get-credentials observability-cluster --zone=us-central1-a
+gcloud container clusters get-credentials observability-cluster --zone=asia-south1-a
 
 # Apply manifests
 kubectl apply -f observability/k8s/

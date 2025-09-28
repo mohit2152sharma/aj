@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: observability
-          image: asia-south1-docker.pkg.dev/PROJECT_ID/observability/observability:latest
+          image: asia-south1-docker.pkg.dev/PROJECT_ID/dev-opentelemetry/observability:latest
           ports:
             - containerPort: 8000
           env:

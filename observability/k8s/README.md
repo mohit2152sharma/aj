@@ -32,5 +32,6 @@ kubectl logs deployment/observability -n observability
 ## Notes
 
 - The `PROJECT_ID` placeholder in `deployment.yaml` gets replaced during CI/CD
+- Images are pushed to the `dev-opentelemetry` registry in Artifact Registry
 - Modify `ingress.yaml` to use your actual domain name
 - Health endpoint added to `/greet/health` in the FastAPI app
