@@ -1,0 +1,6 @@
+[submodule "aj-bot/python-docs-samples"]
+	path = aj-bot/python-docs-samples
+	url = https://github.com/GoogleCloudPlatform/python-docs-samples.git
+[submodule "pipecat-examples"]
+	path = pipecat-examples
+	url = git@github.com:pipecat-ai/pipcat-examples.git

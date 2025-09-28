@@ -23,6 +23,7 @@ ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 
 # Expose port
 EXPOSE 8000
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Start FastAPI server
-CMD [".venv/bin/opentelemetry-instrument", ".venv/bin/uvicorn", "hello:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["opentelemetry-instrument", "uvicorn", "hello:app", "--host", "0.0.0.0", "--port", "8000"]
