@@ -10,9 +10,12 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.cloud_trace_propagator import CloudTraceFormatPropagator
+from opentelemetry.resourcedetector.gcp_resource_detector import (
+    GoogleCloudResourceDetector,
+)
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import Resource, get_aggregated_resources
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -37,21 +40,29 @@ def setup_tracing(app_name: str = "observability") -> Optional[trace.Tracer]:
 
     print(f"Setting up tracing for project: {project_id}")
 
-    # Create resource with service information
-    resource = Resource.create(
-        {
-            "service.name": app_name,
-            "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
-            "service.instance.id": os.getenv("HOSTNAME", "unknown"),
-        }
+    # Detect GCP/GKE resources and merge with explicit service attributes
+    detected_resource = get_aggregated_resources(
+        [GoogleCloudResourceDetector(raise_on_error=True)]
+    )
+    resource = detected_resource.merge(
+        Resource.create(
+            {
+                "service.name": app_name,
+                "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
+                "service.instance.id": os.getenv("HOSTNAME", "unknown"),
+            }
+        )
     )
 
     # Set up tracer provider
     tracer_provider = TracerProvider(resource=resource)
     trace.set_tracer_provider(tracer_provider)
 
-    # Create Cloud Trace exporter
-    cloud_trace_exporter = CloudTraceSpanExporter(project_id=project_id)
+    # Create Cloud Trace exporter and include all resource attributes on spans
+    cloud_trace_exporter = CloudTraceSpanExporter(
+        project_id=project_id,
+        resource_regex=r".*",
+    )
 
     # Add batch span processor
     span_processor = BatchSpanProcessor(cloud_trace_exporter)
@@ -84,12 +95,17 @@ def setup_metrics(app_name: str = "observability") -> Optional[metrics.Meter]:
 
     print(f"Setting up metrics for project: {project_id}")
 
-    resource = Resource.create(
-        {
-            "service.name": app_name,
-            "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
-            "service.instance.id": os.getenv("HOSTNAME", "unknown"),
-        }
+    detected_resource = get_aggregated_resources(
+        [GoogleCloudResourceDetector(raise_on_error=True)]
+    )
+    resource = detected_resource.merge(
+        Resource.create(
+            {
+                "service.name": app_name,
+                "service.version": os.getenv("SERVICE_VERSION", "1.0.0"),
+                "service.instance.id": os.getenv("HOSTNAME", "unknown"),
+            }
+        )
     )
 
     exporter = CloudMonitoringMetricsExporter(project_id=project_id)
@@ -226,7 +242,7 @@ def add_span_attribute(key: str, value: str) -> None:
         span.set_attribute(key, value)
 
 
-def add_span_event(name: str, attributes: dict = None) -> None:
+def add_span_event(name: str, attributes: dict | None = None) -> None:
     """Add event to current span."""
     span = get_current_span()
     if span:
