@@ -6,8 +6,9 @@ This directory contains Kubernetes manifests for deploying the observability ser
 
 - **`namespace.yaml`**: Creates the `observability` namespace
 - **`deployment.yaml`**: Defines the main application deployment with 3 replicas
-- **`service.yaml`**: Exposes the application internally on port 80
+- **`service.yaml`**: Exposes the application internally on port 80  
 - **`ingress.yaml`**: Configures external access with SSL (requires domain setup)
+- **`service-account.yaml`**: Service account with Cloud Trace permissions
 
 ## Features
 
@@ -15,6 +16,8 @@ This directory contains Kubernetes manifests for deploying the observability ser
 - **Resource Limits**: Memory (256Mi) and CPU (200m) limits set
 - **Auto-scaling**: Deployment supports 3 replicas by default
 - **SSL/TLS**: Managed certificates through Google Cloud (requires domain)
+- **OpenTelemetry Tracing**: Automatic tracing with Google Cloud Trace integration
+- **Service Account**: Proper IAM configuration for cloud services access
 
 ## Quick Deploy
 

@@ -39,6 +39,11 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/iam.serviceAccountUser"
 
+# Grant Cloud Trace permissions for the observability service
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountAdmin"
+
 # Create and download key
 gcloud iam service-accounts keys create github-actions-key.json \
     --iam-account=github-actions@$PROJECT_ID.iam.gserviceaccount.com
@@ -74,6 +79,8 @@ gcloud container clusters create observability-cluster \
 gcloud services enable artifactregistry.googleapis.com
 gcloud services enable container.googleapis.com
 gcloud services enable cloudbuild.googleapis.com
+gcloud services enable cloudtrace.googleapis.com
+gcloud services enable cloudresourcemanager.googleapis.com
 ```
 
 ### GitHub Secrets Setup
@@ -137,4 +144,35 @@ You can modify the following:
 **In `observability/k8s/` manifests:**
 - `deployment.yaml`: Adjust replicas, resources, environment variables
 - `ingress.yaml`: Configure your domain and SSL certificates
+- `service-account.yaml`: Configure service account for Google Cloud Trace access
 - Add ConfigMaps, Secrets, or other Kubernetes resources as needed
+
+## Tracing and Observability
+
+The application includes OpenTelemetry tracing with Google Cloud Trace integration:
+
+### Setup Cloud Trace
+
+1. **Enable APIs and create service account for tracing:**
+```bash
+# Create service account for the observability app
+gcloud iam service-accounts create observability-sa \
+    --description="Service account for observability app with tracing" \
+    --display-name="Observability Service Account"
+
+# Grant Cloud Trace agent role
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:observability-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/cloudtrace.agent"
+
+# Enable Workload Identity (if using GKE)
+gcloud iam service-accounts add-iam-policy-binding observability-sa@$PROJECT_ID.iam.gserviceaccount.com \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:$PROJECT_ID.svc.id.goog[observability/observability-sa]"
+```
+
+2. **View traces:**
+   - Go to Google Cloud Console → Trace
+   - Select your project to view application traces
+
+For detailed tracing documentation, see [TRACING.md](TRACING.md)

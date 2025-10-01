@@ -8,3 +8,4 @@ class GreetRequest(BaseModel):
 class GreetResponse(BaseModel):
     message: str
 
+
