@@ -19,14 +19,20 @@ from app.tracing import (
 SERVICE_NAME = SETTINGS_SERVICE_NAME
 
 # Set up tracing and metrics before creating the app
+print(f"[Startup] Initializing observability for service: {SERVICE_NAME}")
 tracer = setup_tracing(SERVICE_NAME)
+print(f"[Startup] Tracing ready: {bool(tracer)}")
 meter = setup_metrics(SERVICE_NAME)
+print(f"[Startup] Metrics ready: {bool(meter)}")
 init_custom_metrics()
+print("[Startup] Custom metrics initialized")
 
 app = FastAPI(title=SERVICE_NAME)
 
 # Instrument the FastAPI app with OpenTelemetry
+print("[Startup] Instrumenting FastAPI app...")
 instrument_fastapi(app)
+print("[Startup] FastAPI instrumentation done")
 
 
 @app.middleware("http")
