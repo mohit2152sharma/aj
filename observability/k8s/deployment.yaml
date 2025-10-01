@@ -6,7 +6,7 @@ metadata:
   labels:
     app: observability-a
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: observability-a
@@ -15,7 +15,7 @@ spec:
       labels:
         app: observability-a
     spec:
-      serviceAccountName: observability-sa
+      serviceAccountName: collector
       containers:
         - name: observability
           image: asia-south1-docker.pkg.dev/saral-458210/dev-opentelemetry/observability:latest
@@ -80,7 +80,7 @@ metadata:
   labels:
     app: observability-b
 spec:
-  replicas: 3
+  replicas: 2
   selector:
     matchLabels:
       app: observability-b
@@ -89,7 +89,7 @@ spec:
       labels:
         app: observability-b
     spec:
-      serviceAccountName: observability-sa
+      serviceAccountName: collector
       containers:
         - name: observability
           image: asia-south1-docker.pkg.dev/saral-458210/dev-opentelemetry/observability:latest
