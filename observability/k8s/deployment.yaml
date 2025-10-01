@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: observability-a
+  namespace: observability
   labels:
     app: observability-a
 spec:
@@ -59,6 +60,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: observability-a-service
+  namespace: observability
   labels:
     app: observability-a
 spec:
@@ -74,6 +76,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: observability-b
+  namespace: observability
   labels:
     app: observability-b
 spec:
@@ -131,6 +134,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: observability-b-service
+  namespace: observability
   labels:
     app: observability-b
 spec:
