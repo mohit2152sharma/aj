@@ -1,14 +1,15 @@
-Title: Senior/Lead Backend Exercise - Real-time Auction Platform
+Title: Senior/Lead Backend Exercise - Real-time A/V over WebSockets
 
 Goal
-You will design and implement a backend system for a high-traffic, real-time
-auction platform. The platform must handle large fanout over WebSockets, strict
-consistency for bids, and durability in Postgres. Expectation is at least 2 days
-of work to design and implement properly.
+You will design and implement a backend system for real-time audio/video
+communication where media flows strictly over WebSockets (no WebRTC/UDP). The
+system must handle high fanout, low latency, and reliability, with metadata and
+audit stored in Postgres. Expectation is at least 2 days of work to design and
+implement properly.
 
 Tech constraints (must use)
 - Python (3.10+ recommended)
-- WebSocket-based connections for real-time interactions
+- WebSocket-based connections for all real-time traffic
 - Postgres as the primary database
 
 Optional tech (design only)
@@ -21,60 +22,56 @@ What we are evaluating (weighted)
 - Low-level design (20%)
 
 Problem statement
-Build the backend for a real-time auction system where:
-- Each auction has a start/end time, reserve price, and minimum increment.
-- Bidders place bids over WebSockets.
-- Watchers receive real-time updates (top bid, bid history, auction state).
-- The system must enforce ordering, fairness, and atomicity of bids.
+Build the backend for a real-time audio/video communication service where:
+- Users join rooms and publish/subscribe to A/V streams over WebSockets.
+- The server relays media frames to all subscribers in a room.
+- The system enforces ordering per stream, handles backpressure, and keeps
+  latency low.
 
 Functional requirements
-1) Auctions
-   - Create an auction with: item_id, start_at, end_at, reserve_price,
-     min_increment.
-   - State transitions: SCHEDULED -> LIVE -> CLOSED -> SETTLED.
-   - Anti-sniping: if a valid bid arrives in the last 30 seconds, extend the
-     auction by 30 seconds (repeatable).
+1) Rooms and sessions
+   - Create a room with: room_id, title, max_participants.
+   - Users can JOIN and LEAVE rooms over WebSockets.
+   - Room state transitions: IDLE -> LIVE -> ENDED.
 
-2) Bidding
-   - Bid placement happens over WebSockets.
-   - A bid is valid only if:
-     - Auction is LIVE.
-     - Bid amount >= current_top + min_increment.
-     - Bidder is authenticated and not rate-limited.
-   - Bids must be durable and strictly ordered per auction.
-   - Reject duplicates via idempotency keys.
+2) Media publish/subscribe
+   - Media frames are sent over WebSockets as binary messages.
+   - Each publisher has one audio stream and one video stream.
+   - Each stream carries a monotonic frame sequence number.
+   - The server relays frames to all subscribers in the room.
+   - If a client reconnects, it can request a replay gap fill by sequence.
 
-3) Real-time updates
-   - Clients can subscribe to an auction channel via WebSocket.
-   - On subscribe, client receives a snapshot (current top bid + last N bids).
-   - After snapshot, client receives live updates.
-   - If a client reconnects, it can request updates since last seen sequence.
+3) Real-time control
+   - Clients can mute/unmute, pause/resume video, or switch video quality.
+   - Control messages are JSON over WebSockets.
+   - The server broadcasts state changes to the room.
 
 4) History and audit
-   - Store every accepted bid with a monotonic sequence per auction.
-   - Provide a way to fetch bid history and final result.
+   - Store room/session metadata and participant events in Postgres.
+   - Store per-stream stats (bitrate, fps, packet loss estimates).
+   - Media payloads do NOT need to be persisted.
 
 5) Reliability and correctness
-   - No lost bids. Once accepted, it must be persisted and replayable.
-   - Avoid accepting two winning bids at the same logical time.
-   - Handle network disconnects cleanly.
+   - No duplicate delivery per subscriber for the same sequence.
+   - Backpressure handling to avoid unbounded memory growth.
+   - Graceful handling of disconnects and reconnections.
 
 Non-functional requirements (design for these)
-- 100k concurrent WebSocket connections across auctions.
-- Hot auction: 2k bids/sec, 50k watchers.
-- P99 bid ack latency < 200ms.
-- 99.95% availability for live auctions.
-- Zero data loss for accepted bids.
+- 100k concurrent WebSocket connections across rooms.
+- Hot room: 200 publishers, 50k subscribers (fanout).
+- P99 end-to-end latency < 300ms for audio, < 600ms for video.
+- 99.95% availability for live rooms.
+- Zero loss of room metadata and participant events.
 
 System design deliverable
 Provide a design document that includes:
 - Capacity estimates and assumptions.
 - Architecture diagram (components and data flow).
-- Scaling strategy: horizontal scaling, sharding strategy for auctions.
+- Scaling strategy: horizontal scaling, room sharding, and stickiness.
 - WebSocket fanout and backpressure strategy.
 - Data model and indexing strategy in Postgres.
 - Failure modes and recovery strategies.
-- Consistency model for bids and ordering.
+- Consistency model for stream ordering and replay.
 - Observability: metrics, logs, tracing, alerts.
 - Tradeoffs and alternatives you considered.
 
@@ -82,29 +79,32 @@ Low-level design deliverable
 Provide a document or section that includes:
 - Module breakdown and key class/function responsibilities.
 - Detailed sequence diagrams for:
-  - place_bid
+  - join_room
+  - publish_frame
   - subscribe_and_replay
-  - auction_close_and_settle
 - WebSocket message protocol (envelope + message types).
 - Database schema with constraints and indexes.
-- Concurrency control approach (locks, transactions, isolation levels).
-- Idempotency and deduplication strategy.
+- Concurrency control approach (locks, queues, isolation levels).
+- Backpressure and drop strategy (audio vs video).
 
 Coding deliverable (required implementation)
 Implement a minimal but correct system that runs locally:
 - A WebSocket server that supports:
   - AUTH (token or api_key is fine)
-  - SUBSCRIBE {auction_id, since_seq}
-  - BID {auction_id, amount, idempotency_key}
-- Bid validation and atomic persistence to Postgres.
-- Monotonic sequence per auction (no gaps for accepted bids).
-- Snapshot + live updates for subscribed clients.
-- Anti-sniping behavior.
-- Rate limiting per bidder and per auction (simple in-memory acceptable).
+  - JOIN {room_id}
+  - LEAVE {room_id}
+  - PUBLISH {room_id, stream_type, seq, payload}
+  - SUBSCRIBE {room_id, stream_type, since_seq}
+  - CONTROL {room_id, action, value}
+- Atomic persistence of room/session metadata to Postgres.
+- Monotonic sequence per stream (no gaps for accepted frames).
+- Snapshot + live updates for subscribers.
+- Backpressure handling with a bounded buffer.
+- Rate limiting per publisher and per room (simple in-memory acceptable).
 - Tests:
-  - Concurrent bids for same auction (race condition test).
-  - Idempotent bid replay.
-  - Anti-sniping extension.
+  - Concurrent publishers in same room (ordering + fanout).
+  - Reconnect and replay from last sequence.
+  - Backpressure drop policy (video drops first).
 
 Implementation notes (not requirements)
 - Framework choice is yours (FastAPI, Starlette, raw websockets, etc).
@@ -114,10 +114,10 @@ Implementation notes (not requirements)
 - Provide a README with setup steps and how to run tests.
 
 Stretch goals (if time permits)
-- Leader election or partition ownership for auctions.
-- Backpressure and per-connection flow control.
-- Replay from Postgres using a cursor without hot-spotting.
-- Fast recovery after node crash (warm caches, rehydrate state).
+- Dynamic quality adaptation (server-directed).
+- Room ownership/partitioning with leader election.
+- Per-connection flow control and adaptive buffering.
+- Jitter buffer with playout delay control.
 - TLS, authn/z, and multi-tenant isolation.
 
 Submission format
@@ -133,6 +133,6 @@ Clarifications
 
 What good looks like
 - Clear, testable design assumptions.
-- Correctness under concurrent bidding.
+- Correctness under concurrent publish/subscribe.
 - Practical scaling strategy.
 - Clean, readable code with tests and good error handling.
