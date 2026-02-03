@@ -1,0 +1,138 @@
+Title: Senior/Lead Backend Exercise - Real-time A/V over WebSockets
+
+Goal
+You will design and implement a backend system for real-time audio/video
+communication where media flows strictly over WebSockets (no WebRTC/UDP). The
+system must handle high fanout, low latency, and reliability, with metadata and
+audit stored in Postgres. Expectation is at least 2 days of work to design and
+implement properly.
+
+Tech constraints (must use)
+- Python (3.10+ recommended)
+- WebSocket-based connections for all real-time traffic
+- Postgres as the primary database
+
+Optional tech (design only)
+- You may propose caches, queues, or stream processors in your design, but the
+  implementation must still work with only Python + Postgres.
+
+What we are evaluating (weighted)
+- System design (40%)
+- Coding skills (40%)
+- Low-level design (20%)
+
+Problem statement
+Build the backend for a real-time audio/video communication service where:
+- Users join rooms and publish/subscribe to A/V streams over WebSockets.
+- The server relays media frames to all subscribers in a room.
+- The system enforces ordering per stream, handles backpressure, and keeps
+  latency low.
+
+Functional requirements
+1) Rooms and sessions
+   - Create a room with: room_id, title, max_participants.
+   - Users can JOIN and LEAVE rooms over WebSockets.
+   - Room state transitions: IDLE -> LIVE -> ENDED.
+
+2) Media publish/subscribe
+   - Media frames are sent over WebSockets as binary messages.
+   - Each publisher has one audio stream and one video stream.
+   - Each stream carries a monotonic frame sequence number.
+   - The server relays frames to all subscribers in the room.
+   - If a client reconnects, it can request a replay gap fill by sequence.
+
+3) Real-time control
+   - Clients can mute/unmute, pause/resume video, or switch video quality.
+   - Control messages are JSON over WebSockets.
+   - The server broadcasts state changes to the room.
+
+4) History and audit
+   - Store room/session metadata and participant events in Postgres.
+   - Store per-stream stats (bitrate, fps, packet loss estimates).
+   - Media payloads do NOT need to be persisted.
+
+5) Reliability and correctness
+   - No duplicate delivery per subscriber for the same sequence.
+   - Backpressure handling to avoid unbounded memory growth.
+   - Graceful handling of disconnects and reconnections.
+
+Non-functional requirements (design for these)
+- 100k concurrent WebSocket connections across rooms.
+- Hot room: 200 publishers, 50k subscribers (fanout).
+- P99 end-to-end latency < 300ms for audio, < 600ms for video.
+- 99.95% availability for live rooms.
+- Zero loss of room metadata and participant events.
+
+System design deliverable
+Provide a design document that includes:
+- Capacity estimates and assumptions.
+- Architecture diagram (components and data flow).
+- Scaling strategy: horizontal scaling, room sharding, and stickiness.
+- WebSocket fanout and backpressure strategy.
+- Data model and indexing strategy in Postgres.
+- Failure modes and recovery strategies.
+- Consistency model for stream ordering and replay.
+- Observability: metrics, logs, tracing, alerts.
+- Tradeoffs and alternatives you considered.
+
+Low-level design deliverable
+Provide a document or section that includes:
+- Module breakdown and key class/function responsibilities.
+- Detailed sequence diagrams for:
+  - join_room
+  - publish_frame
+  - subscribe_and_replay
+- WebSocket message protocol (envelope + message types).
+- Database schema with constraints and indexes.
+- Concurrency control approach (locks, queues, isolation levels).
+- Backpressure and drop strategy (audio vs video).
+
+Coding deliverable (required implementation)
+Implement a minimal but correct system that runs locally:
+- A WebSocket server that supports:
+  - AUTH (token or api_key is fine)
+  - JOIN {room_id}
+  - LEAVE {room_id}
+  - PUBLISH {room_id, stream_type, seq, payload}
+  - SUBSCRIBE {room_id, stream_type, since_seq}
+  - CONTROL {room_id, action, value}
+- Atomic persistence of room/session metadata to Postgres.
+- Monotonic sequence per stream (no gaps for accepted frames).
+- Snapshot + live updates for subscribers.
+- Backpressure handling with a bounded buffer.
+- Rate limiting per publisher and per room (simple in-memory acceptable).
+- Tests:
+  - Concurrent publishers in same room (ordering + fanout).
+  - Reconnect and replay from last sequence.
+  - Backpressure drop policy (video drops first).
+
+Implementation notes (not requirements)
+- Framework choice is yours (FastAPI, Starlette, raw websockets, etc).
+- You can keep the implementation as a single service, but show how it would
+  scale out.
+- Keep dependencies minimal.
+- Provide a README with setup steps and how to run tests.
+
+Stretch goals (if time permits)
+- Dynamic quality adaptation (server-directed).
+- Room ownership/partitioning with leader election.
+- Per-connection flow control and adaptive buffering.
+- Jitter buffer with playout delay control.
+- TLS, authn/z, and multi-tenant isolation.
+
+Submission format
+- README with setup/run/test instructions.
+- Design doc (markdown or pdf).
+- Code + tests.
+- Any scripts or docker compose you want to include.
+
+Clarifications
+- You are not expected to implement a full UI.
+- You can stub auth, but must show where it integrates.
+- You can mock external services in tests.
+
+What good looks like
+- Clear, testable design assumptions.
+- Correctness under concurrent publish/subscribe.
+- Practical scaling strategy.
+- Clean, readable code with tests and good error handling.
